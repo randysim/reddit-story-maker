@@ -1,20 +1,14 @@
 import os
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
 
-os.chmod("./chromedriver.exe", 755)
-DRIVER = Service(executable_path="./chromedriver.exe")
+DRIVER_PATH="./geckodriver"
+DRIVER = Service(executable_path=DRIVER_PATH)
 
-options = Options()
-options.headless = False
-userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.56 Safari/537.36"
-options.add_argument(f'user-agent={userAgent}')
-driver = webdriver.Chrome(options=options, service=DRIVER)
+firefox_options = Options()
+
+driver = webdriver.Firefox(service=DRIVER, options=firefox_options)
 
 def parse_post(url):
     print(f"Fetching post data from {url}")

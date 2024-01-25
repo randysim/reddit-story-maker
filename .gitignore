@@ -160,4 +160,4 @@ cython_debug/
 #.idea/
 
 # selenium chrome driver
-chromedriver.exe
+geckodriver
