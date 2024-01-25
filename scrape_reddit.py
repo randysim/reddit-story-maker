@@ -1,5 +1,6 @@
 import math
 import random
+import re
 import time
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
@@ -22,8 +23,11 @@ user_agents = [
 ]
 user_agent = random.choice(user_agents)
 firefox_options.add_argument(f"user-agent={user_agent}")
+firefox_options.add_argument("--headless")
 
 driver = webdriver.Firefox(service=DRIVER, options=firefox_options)
+
+remove_text = ["&nbsp;", "&amp;"]
 
 """
 POST META DATA USED TO GENERATE REDDIT IMAGE
@@ -130,7 +134,7 @@ def parse_post(post_meta, comment_count):
 
     for comment in comments:
         p = comment.find_element(By.TAG_NAME, "p")
-        content = p.get_attribute("innerHTML").strip()
+        content = filter_text(p.get_attribute("innerHTML"), remove_text)
 
         if p in ["Comment removed by moderator", "Comment deleted by user", "[Removed]"]:
             continue
@@ -147,6 +151,14 @@ def parse_post(post_meta, comment_count):
     pst["comments"] = comment_data
 
     return pst
+
+def filter_text(text, blacklist):
+    text = text.strip()
+    # remove blacklisted words
+    text = re.sub('|'.join(blacklist), "", text)
+    # remove consecutive spaces
+    text = re.sub(' +', ' ', text)
+    return text
 
 if __name__ == "__main__":
     print(get_post_data(subreddit="AskReddit", count=1, comment_count=10))
