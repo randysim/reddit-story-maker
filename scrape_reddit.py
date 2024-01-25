@@ -27,7 +27,7 @@ user_agents = [
 ]
 user_agent = random.choice(user_agents)
 firefox_options.add_argument(f"user-agent={user_agent}")
-# firefox_options.add_argument("--headless")
+firefox_options.add_argument("--headless")
 
 driver = webdriver.Firefox(service=DRIVER, options=firefox_options)
 driver.maximize_window()
@@ -47,11 +47,6 @@ subreddit-prefixed-name="r/AskReddit"
 author="NetworkOver7742" 
 icon="https://preview.redd.it/snoovatar/avatars/bd8699f4-4c5f-421e-8d0a-d678bc41d935-headshot.png?width=64&amp;height=64&amp;crop=smart&amp;auto=webp&amp;s=0afc459d8f6f14b6fad99261cd6d0fbbe3629afd">
 """
-
-# TODO:
-# Have a system where once all the metadata is generated, mark down in a log file so duplicate posts aren't used
-# Then, in subsequent runs, fetch for more posts if theres a duplicate post
-# for comments, if a comment gets bypassed, fetch more to compensate
 
 # OUTPUT: list of post data
 def get_post_meta():
@@ -121,6 +116,13 @@ def get_post_data(subreddit, count=3, comment_count=10, post_url=None):
         print("Loading took too much time.")
     
     post_elements = driver.find_elements(By.TAG_NAME, "shreddit-post")[:count]
+    while len(post_elements) < count:
+        # scroll down a bit and wait and try again
+        print("Scrolling down a bit... 3s")
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)
+        post_elements = driver.find_elements(By.TAG_NAME, "shreddit-post")[:count]
+
     count = len(post_elements)
 
     # time needed to click on a post
@@ -131,6 +133,7 @@ def get_post_data(subreddit, count=3, comment_count=10, post_url=None):
     post_data = []
     c = 0
 
+    print("Getting Posts...")
     for post_element in post_elements:
         post_type = post_element.get_attribute("post-type")
         if post_type != "text":
@@ -158,12 +161,11 @@ def get_post_data(subreddit, count=3, comment_count=10, post_url=None):
         post_meta["img_path"] = f"assets/{ss_path}/post.png"
         post_meta["img_dir"] = ss_path
 
-        try:
-
-            post_data.append(parse_post(post_meta, comment_count))
-        except StaleElementReferenceException:
-            print("StaleElementReferenceException!")
-
+        post_data.append(post_meta)
+    
+    print("Parsing each post's data...")
+    for p_meta in post_data:
+        post_data[c] = parse_post(p_meta, comment_count)
         c += 1
 
         if c >= count:
@@ -207,12 +209,10 @@ def parse_post(post_meta, comment_count):
     removed_replies = remove_replies(comments)
     post_meta["comment_count"] -= removed_replies
     comment_count = min(post_meta["comment_count"], comment_count)
-    last_y = 0
     for comment in comments:
         if len(comment_data) >= comment_count:
                 break
         add_comment_data(comment_data, comment, post_meta)
-        last_y = comment.location['y']
         # driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", comment)
     comments.clear()
 
@@ -230,7 +230,6 @@ def parse_post(post_meta, comment_count):
             if len(comment_data) >= comment_count:
                 break
             add_comment_data(comment_data, comment, post_meta)
-            last_y = comment.location['y']
             # driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", comment)
         comments.clear()
 
@@ -246,8 +245,7 @@ def add_comment_data(comment_data, comment, post_meta):
     p = comment.find_element(By.TAG_NAME, "p")
     content = filter_text(p.get_attribute("innerHTML"), remove_text)
 
-    if p in ["Comment removed by moderator", "Comment deleted by user", "[Removed]"]:
-        return False
+    
     
     c = len(comment_data)
 
@@ -257,6 +255,11 @@ def add_comment_data(comment_data, comment, post_meta):
         "author_icon": post_meta["author_icon"], # replace this later with the right one or a random one
         "content": content
     }
+
+    if (content in ["Comment removed by moderator", "Comment deleted by user", "[Removed]"]) or (comment_meta["author"] in ["deleted", "[deleted]"]):
+        # delete comment
+        driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", comment)
+        return False
 
     # take a screenshot
     ss_path = f"{post_meta['img_dir']}/comment{c}.png"
@@ -325,13 +328,14 @@ def remove_replies(comments):
             comments.pop(c+1)
             removed += 1
         c -= 1
-    
+
     print(f"Removed {removed} replies from {len(comments)} comments!")
     return removed
 
 def click_load_button():
     try:
         print("Loading more comments...")
+        time.sleep(2)
         comment_tree = driver.find_element(By.TAG_NAME, "shreddit-comment-tree")
         button = comment_tree.find_element(By.CLASS_NAME, "button-brand")
         button.click()
@@ -343,4 +347,4 @@ def click_load_button():
     
 
 if __name__ == "__main__":
-    print(get_post_data(subreddit="AskReddit", count=1, comment_count=30, post_url="https://www.reddit.com/r/ApplyingToCollege/comments/19f9fv1/college_admissions_is_toxic/"))
+    print(get_post_data(subreddit="AskReddit", count=5, comment_count=30))
