@@ -149,4 +149,4 @@ def parse_post(post_meta, comment_count):
     return pst
 
 if __name__ == "__main__":
-    print(get_post_data("AskReddit", 1, 10))
+    print(get_post_data(subreddit="AskReddit", count=1, comment_count=10))
