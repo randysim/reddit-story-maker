@@ -1,4 +1,7 @@
+import asyncio
 import math
+import os
+from PIL import Image
 import random
 import re
 import time
@@ -8,6 +11,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.common.exceptions import TimeoutException
 
 DRIVER_PATH="./geckodriver"
@@ -23,11 +27,13 @@ user_agents = [
 ]
 user_agent = random.choice(user_agents)
 firefox_options.add_argument(f"user-agent={user_agent}")
-firefox_options.add_argument("--headless")
+# firefox_options.add_argument("--headless")
 
 driver = webdriver.Firefox(service=DRIVER, options=firefox_options)
+driver.maximize_window()
+WINDOW_HEIGHT = driver.execute_script("return document.body.scrollHeight")
 
-remove_text = ["&nbsp;", "&amp;"]
+remove_text = ["&nbsp;", "&amp;", "<br>", "</br>"]
 
 """
 POST META DATA USED TO GENERATE REDDIT IMAGE
@@ -41,6 +47,11 @@ subreddit-prefixed-name="r/AskReddit"
 author="NetworkOver7742" 
 icon="https://preview.redd.it/snoovatar/avatars/bd8699f4-4c5f-421e-8d0a-d678bc41d935-headshot.png?width=64&amp;height=64&amp;crop=smart&amp;auto=webp&amp;s=0afc459d8f6f14b6fad99261cd6d0fbbe3629afd">
 """
+
+# TODO:
+# Have a system where once all the metadata is generated, mark down in a log file so duplicate posts aren't used
+# Then, in subsequent runs, fetch for more posts if theres a duplicate post
+# for comments, if a comment gets bypassed, fetch more to compensate
 
 # OUTPUT: list of post data
 def get_post_data(subreddit, count, comment_count):
@@ -76,19 +87,35 @@ def get_post_data(subreddit, count, comment_count):
         post_type = post_element.get_attribute("post-type")
         if post_type != "text":
             continue
-
+        
+        
         post_meta = {
             "post_title": filter_text(post_element.get_attribute("post-title"), remove_text),
             "author": post_element.get_attribute("author"),
             "author_icon": post_element.get_attribute("icon"),
             "subreddit": post_element.get_attribute("subreddit-prefixed-name"),
-            "comment_count": post_element.get_attribute("comment-count"),
+            "comment_count": int(post_element.get_attribute("comment-count")),
             "created": post_element.get_attribute("created-timestamp"),
             "score": post_element.get_attribute("score"),
             "content_href": post_element.get_attribute("content-href")
         }
 
-        post_data.append(parse_post(post_meta, comment_count))
+        # if post has less comments than requested
+        if post_meta["comment_count"] < comment_count:
+            comment_count = post_meta["comment_count"]
+
+        # take a screenshot
+        ss_path = f"{subreddit}-{post_meta['author']}"
+        screenshot(post_element, f"{subreddit}-{post_meta['author']}", "post.png")
+        post_meta["img_path"] = f"assets/{ss_path}/post.png"
+        post_meta["img_dir"] = ss_path
+
+        try:
+
+            post_data.append(parse_post(post_meta, comment_count))
+        except StaleElementReferenceException:
+            print("StaleElementReferenceException!")
+
         c += 1
 
         if c >= count:
@@ -127,30 +154,68 @@ def parse_post(post_meta, comment_count):
     except TimeoutException:
         print("Loading took too much time.")
     
-    comments = driver.find_elements(By.TAG_NAME, "shreddit-comment")[:comment_count]
-    comment_count = len(comments)
-
     comment_data = []
-
+    comments = driver.find_elements(By.TAG_NAME, "shreddit-comment")
+    remove_replies(comments)
+    last_y = 0
     for comment in comments:
-        p = comment.find_element(By.TAG_NAME, "p")
-        content = filter_text(p.get_attribute("innerHTML"), remove_text)
+        add_comment_data(comment_data, comment, post_meta)
+        last_y = comment.location['y']
+        # driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", comment)
+    comments.clear()
 
-        if p in ["Comment removed by moderator", "Comment deleted by user", "[Removed]"]:
-            continue
+    while len(comment_data) < comment_count:
+        comments = driver.find_elements(By.TAG_NAME, "shreddit-comment")[len(comment_data):]
+        if len(comments) == 0:
+            # look for load more button and wait
+            print("Loading more comments...")
+            time.sleep(5)
 
-        comment_meta = {
-            "author": comment.get_attribute("author"),
-            "score": comment.get_attribute("score"),
-            "author_icon": post_meta["author_icon"], # replace this later with the right one or a random one
-            "content": content
-        }
-        comment_data.append(comment_meta)
+        removed_replies = remove_replies(comments)
+        for comment in comments:
+            add_comment_data(comment_data, comment, post_meta)
+            last_y = comment.location['y']
+            # driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", comment)
+        comments.clear()
+
+        post_meta["comment_count"] -= removed_replies
+        comment_count = min(post_meta["comment_count"], comment_count)
+    comment_data = comments[:comment_count]
     
+
+    # scroll to last comment and wait for load
+    print("Scrolling to last comment... waiting 5s")
+    driver.execute_script("arguments[0].scrollIntoView(true);", comments[-1])
+    time.sleep(5)
+
     pst = post_meta.copy()
     pst["comments"] = comment_data
 
     return pst
+
+def add_comment_data(comment_data, comment, post_meta):
+    p = comment.find_element(By.TAG_NAME, "p")
+    content = filter_text(p.get_attribute("innerHTML"), remove_text)
+
+    if p in ["Comment removed by moderator", "Comment deleted by user", "[Removed]"]:
+        return False
+    
+    c = len(comment_data)
+
+    comment_meta = {
+        "author": comment.get_attribute("author"),
+        "score": comment.get_attribute("score"),
+        "author_icon": post_meta["author_icon"], # replace this later with the right one or a random one
+        "content": content
+    }
+
+    # take a screenshot
+    ss_path = f"{post_meta['img_dir']}/comment{c}.png"
+    screenshot(comment, post_meta["img_dir"], f"comment{c}.png")
+    comment_meta["img_path"] = f"assets/{ss_path}/comment{c}.png"
+
+    comment_data.append(comment_meta)
+    return True
 
 def filter_text(text, blacklist):
     text = text.strip()
@@ -160,5 +225,62 @@ def filter_text(text, blacklist):
     text = re.sub(' +', ' ', text)
     return text
 
+def screenshot(element, folder, file_name):
+    if not os.path.isdir(f"temp/{folder}"):
+        os.mkdir(f"temp/{folder}")
+    if not os.path.isdir(f"assets/{folder}"):
+        os.mkdir(f"assets/{folder}")
+    
+    scroll_offset = 20
+    max_y_coordinate = driver.execute_script("return Math.max( document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight ) - window.innerHeight;")
+
+    # scroll + wait a bit
+    location = element.location
+    size = element.size
+    scroll_to = location['y']-int(size['height']/2)-scroll_offset
+    if scroll_to > max_y_coordinate:
+        scroll_to = max_y_coordinate
+    driver.execute_script(f"window.scrollTo(0, {scroll_to})")
+
+    driver.save_screenshot(f"temp/{folder}/{file_name}")
+
+    w = size['width']
+    h = size['height']
+    x = location['x']
+    y = location['y'] - scroll_to
+    width = x + w
+    height = y + h
+
+    im = Image.open(f'temp/{folder}/{file_name}')
+    im = im.crop((int(x), int(y), int(width), int(height)))
+    im.save(f"assets/{folder}/{file_name}")
+
+    os.remove(f"temp/{folder}/{file_name}")
+    os.rmdir(f"temp/{folder}")
+
+def remove_replies(comments):
+    c = len(comments)-1
+    removed = 0
+    while c >= 0:
+        comment = comments[c]
+        replies = comment.find_elements(By.TAG_NAME, "shreddit-comment")
+
+        for reply in replies:
+            driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", reply)
+            comments.pop(c+1)
+            removed += 1
+        c -= 1
+    
+    print(f"Removed {removed} replies from {len(comments)} comments!")
+    return removed
+
+def click_load_button():
+    comment_tree = driver.find_element(By.TAG_NAME, "shreddit-comment-tree")
+    btn = comment_tree.find_element(By.TAG_NAME, "button")
+    btn.click()
+    time.sleep(5)
+    print("Waiting 5s to load more comments...")
+    
+
 if __name__ == "__main__":
-    print(get_post_data(subreddit="AskReddit", count=1, comment_count=10))
+    print(get_post_data(subreddit="AskReddit", count=1, comment_count=30))
