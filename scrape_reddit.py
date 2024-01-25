@@ -54,11 +54,59 @@ icon="https://preview.redd.it/snoovatar/avatars/bd8699f4-4c5f-421e-8d0a-d678bc41
 # for comments, if a comment gets bypassed, fetch more to compensate
 
 # OUTPUT: list of post data
-def get_post_data(subreddit, count, comment_count):
+def get_post_meta():
+    main_elem = driver.find_element(By.TAG_NAME, "main")
+    post_element = main_elem.find_element(By.TAG_NAME, "shreddit-post")
+
+    post_type = post_element.get_attribute("post-type")
+    if post_type != "text":
+        print("ERROR: post is not of type text")
+        return
+    
+    
+    post_meta = {
+        "post_title": filter_text(post_element.get_attribute("post-title"), remove_text),
+        "author": post_element.get_attribute("author"),
+        "author_icon": post_element.get_attribute("icon"),
+        "subreddit": post_element.get_attribute("subreddit-prefixed-name"),
+        "comment_count": int(post_element.get_attribute("comment-count")),
+        "created": post_element.get_attribute("created-timestamp"),
+        "score": post_element.get_attribute("score"),
+        "content_href": post_element.get_attribute("content-href")
+    }
+
+    subreddit = post_meta["subreddit"].split("/")[1]
+
+    # take a screenshot
+    ss_path = f"{subreddit}-{post_meta['author']}"
+    screenshot(post_element, f"{subreddit}-{post_meta['author']}", "post.png")
+    post_meta["img_path"] = f"assets/{ss_path}/post.png"
+    post_meta["img_dir"] = ss_path
+
+    return post_meta
+
+def get_post_data(subreddit, count=3, comment_count=10, post_url=None):
     # STEPS:
     # fetch subreddit page
     # get the top posts of the day
     # for each post, get a couple top comments
+
+    if post_url:
+        driver.get(post_url)
+
+        try:
+            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "shreddit-post")))
+        except TimeoutException:
+            print("Loading took too much time.")
+        
+        meta = get_post_meta()
+        # if post has less comments than requested
+        if meta["comment_count"] < comment_count:
+            comment_count = meta["comment_count"]
+
+        pd = parse_post(meta, comment_count)
+
+        return [pd]
 
     if not subreddit:
         print("Error: Missing subreddit")
@@ -172,7 +220,10 @@ def parse_post(post_meta, comment_count):
         comments = driver.find_elements(By.TAG_NAME, "shreddit-comment")[len(comment_data):]
         if len(comments) == 0:
             # look for load more button and wait
-            click_load_button()
+            status = click_load_button()
+            if not status:
+                print("No more comments! Ending loop.")
+                break
 
         removed_replies = remove_replies(comments)
         for comment in comments:
@@ -185,11 +236,6 @@ def parse_post(post_meta, comment_count):
 
         post_meta["comment_count"] -= removed_replies
         comment_count = min(post_meta["comment_count"], comment_count)
-
-    # scroll to last comment and wait for load
-    print("Scrolling to last comment... waiting 5s")
-    driver.execute_script(f"window.scrollTo(0, {last_y})")
-    time.sleep(5)
 
     pst = post_meta.copy()
     pst["comments"] = comment_data
@@ -238,15 +284,17 @@ def screenshot(element, folder, file_name):
     if not os.path.isdir(f"assets/{folder}"):
         os.mkdir(f"assets/{folder}")
     
-    scroll_offset = 20
     max_y_coordinate = driver.execute_script("return Math.max( document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight ) - window.innerHeight;")
 
     # scroll + wait a bit
     location = element.location
     size = element.size
+    scroll_offset = 20
     scroll_to = location['y']-int(size['height']/2)-scroll_offset
     if scroll_to > max_y_coordinate:
         scroll_to = max_y_coordinate
+    if scroll_to < 0:
+        scroll_to = 0
     driver.execute_script(f"window.scrollTo(0, {scroll_to})")
 
     driver.save_screenshot(f"temp/{folder}/{file_name}")
@@ -282,13 +330,17 @@ def remove_replies(comments):
     return removed
 
 def click_load_button():
-    print("Loading more comments...")
-    comment_tree = driver.find_element(By.TAG_NAME, "shreddit-comment-tree")
-    button = comment_tree.find_element(By.CLASS_NAME, "button-brand")
-    button.click()
-    print("Waiting 5s to load more comments...")
-    time.sleep(5)
+    try:
+        print("Loading more comments...")
+        comment_tree = driver.find_element(By.TAG_NAME, "shreddit-comment-tree")
+        button = comment_tree.find_element(By.CLASS_NAME, "button-brand")
+        button.click()
+        print("Waiting 5s to load more comments...")
+        time.sleep(5)
+        return True
+    except:
+        return False
     
 
 if __name__ == "__main__":
-    print(get_post_data(subreddit="AskReddit", count=1, comment_count=30))
+    print(get_post_data(subreddit="AskReddit", count=1, comment_count=30, post_url="https://www.reddit.com/r/ApplyingToCollege/comments/19f9fv1/college_admissions_is_toxic/"))
