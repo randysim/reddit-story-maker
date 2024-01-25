@@ -156,9 +156,13 @@ def parse_post(post_meta, comment_count):
     
     comment_data = []
     comments = driver.find_elements(By.TAG_NAME, "shreddit-comment")
-    remove_replies(comments)
+    removed_replies = remove_replies(comments)
+    post_meta["comment_count"] -= removed_replies
+    comment_count = min(post_meta["comment_count"], comment_count)
     last_y = 0
     for comment in comments:
+        if len(comment_data) >= comment_count:
+                break
         add_comment_data(comment_data, comment, post_meta)
         last_y = comment.location['y']
         # driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", comment)
@@ -168,11 +172,12 @@ def parse_post(post_meta, comment_count):
         comments = driver.find_elements(By.TAG_NAME, "shreddit-comment")[len(comment_data):]
         if len(comments) == 0:
             # look for load more button and wait
-            print("Loading more comments...")
-            time.sleep(5)
+            click_load_button()
 
         removed_replies = remove_replies(comments)
         for comment in comments:
+            if len(comment_data) >= comment_count:
+                break
             add_comment_data(comment_data, comment, post_meta)
             last_y = comment.location['y']
             # driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", comment)
@@ -180,12 +185,10 @@ def parse_post(post_meta, comment_count):
 
         post_meta["comment_count"] -= removed_replies
         comment_count = min(post_meta["comment_count"], comment_count)
-    comment_data = comments[:comment_count]
-    
 
     # scroll to last comment and wait for load
     print("Scrolling to last comment... waiting 5s")
-    driver.execute_script("arguments[0].scrollIntoView(true);", comments[-1])
+    driver.execute_script(f"window.scrollTo(0, {last_y})")
     time.sleep(5)
 
     pst = post_meta.copy()
@@ -279,11 +282,12 @@ def remove_replies(comments):
     return removed
 
 def click_load_button():
+    print("Loading more comments...")
     comment_tree = driver.find_element(By.TAG_NAME, "shreddit-comment-tree")
-    btn = comment_tree.find_element(By.TAG_NAME, "button")
-    btn.click()
-    time.sleep(5)
+    button = comment_tree.find_element(By.CLASS_NAME, "button-brand")
+    button.click()
     print("Waiting 5s to load more comments...")
+    time.sleep(5)
     
 
 if __name__ == "__main__":
