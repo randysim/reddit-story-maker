@@ -78,7 +78,7 @@ def get_post_data(subreddit, count, comment_count):
             continue
 
         post_meta = {
-            "post_title": post_element.get_attribute("post-title"),
+            "post_title": filter_text(post_element.get_attribute("post-title"), remove_text),
             "author": post_element.get_attribute("author"),
             "author_icon": post_element.get_attribute("icon"),
             "subreddit": post_element.get_attribute("subreddit-prefixed-name"),
