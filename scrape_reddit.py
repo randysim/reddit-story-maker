@@ -226,6 +226,10 @@ def filter_text(text, blacklist):
     return text
 
 def screenshot(element, folder, file_name):
+    if not os.path.isdir("temp"):
+        os.mkdir("temp")
+    if not os.path.isdir("assets"):
+        os.mkdir("assets")
     if not os.path.isdir(f"temp/{folder}"):
         os.mkdir(f"temp/{folder}")
     if not os.path.isdir(f"assets/{folder}"):
