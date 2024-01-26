@@ -17,13 +17,15 @@ post_data: [
         score: Int,
         content_href: String,
         img_path: String,
+        audio_path: String,
         comments: [
             {
                 author: String,
                 score: Int,
                 author_icon: String,
                 content: String,
-                img_path: String
+                img_path: String,
+                audio_path: String
             }
         ]
     },

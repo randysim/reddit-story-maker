@@ -77,6 +77,13 @@ def get_post_meta(element=None):
     post_meta["img_path"] = f"assets/{ss_path}/post.png"
     post_meta["img_dir"] = ss_path
 
+    # get voice file for content
+    print("Generating audio for post.")
+    speech = gTTS(text=post_meta["post_title"], lang="en", slow=False)
+    audio_path = f"assets/{ss_path}/post.mp3"
+    speech.save(audio_path)
+    post_meta["audio_path"] = audio_path
+
     return post_meta
 
 def get_post_data(subreddit, count=3, comment_count=10, post_url=None):
@@ -148,7 +155,7 @@ def get_post_data(subreddit, count=3, comment_count=10, post_url=None):
             break
 
         sleep_time = 10 + math.floor(random.random() * 3)
-        print(f"Finished! Sleeping for {sleep_time}.")
+        print(f"Finished! Sleeping for {sleep_time}s.")
         time.sleep(sleep_time)
 
         print(f"Parsed {c}/{count} posts.")
@@ -217,11 +224,12 @@ def parse_post(post_meta, comment_count):
     return pst
 
 def add_comment_data(comment_data, comment, post_meta):
-    p = comment.find_element(By.TAG_NAME, "p")
-    content = filter_text(p.get_attribute("innerHTML"), remove_text)
+    paragraphs = comment.find_elements(By.TAG_NAME, "p")
+    content = ""
+    for p in paragraphs:
+        content += p.get_attribute("innerHTML") + "\n"
+    content = filter_text(content, remove_text)
 
-    
-    
     c = len(comment_data)
 
     comment_meta = {
@@ -241,6 +249,13 @@ def add_comment_data(comment_data, comment, post_meta):
     screenshot(comment, post_meta["img_dir"], f"comment{c}.png")
     comment_meta["img_path"] = f"assets/{ss_path}/comment{c}.png"
 
+    # get voice for comment
+    print(f"Generating audio for comment{c}")
+    speech = gTTS(text=comment_meta["content"], lang="en", slow=False)
+    audio_path = f"assets/{post_meta['img_dir']}/comment{c}.mp3"
+    speech.save(audio_path)
+    comment_meta["audio_path"] = audio_path
+
     comment_data.append(comment_meta)
     return True
 
@@ -250,6 +265,8 @@ def filter_text(text, blacklist):
     text = re.sub('|'.join(blacklist), "", text)
     # remove consecutive spaces
     text = re.sub(' +', ' ', text)
+    # remove consecutive new lines
+    text = re.sub('\n+', '\n', text)
     return text
 
 def screenshot(element, folder, file_name):
@@ -322,4 +339,4 @@ def click_load_button():
     
 
 if __name__ == "__main__":
-    print(get_post_data(subreddit="AskReddit", count=5, comment_count=30))
+    print(get_post_data(subreddit="AskReddit", count=3, comment_count=10))
