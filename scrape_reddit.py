@@ -1,4 +1,4 @@
-import asyncio
+from gtts import gTTS
 import math
 import os
 from PIL import Image
@@ -49,14 +49,14 @@ icon="https://preview.redd.it/snoovatar/avatars/bd8699f4-4c5f-421e-8d0a-d678bc41
 """
 
 # OUTPUT: list of post data
-def get_post_meta():
+def get_post_meta(element=None):
     main_elem = driver.find_element(By.TAG_NAME, "main")
-    post_element = main_elem.find_element(By.TAG_NAME, "shreddit-post")
+    post_element = element if element else main_elem.find_element(By.TAG_NAME, "shreddit-post")
 
     post_type = post_element.get_attribute("post-type")
     if post_type != "text":
         print("ERROR: post is not of type text")
-        return
+        return None
     
     post_meta = {
         "post_title": filter_text(post_element.get_attribute("post-title"), remove_text),
@@ -133,34 +133,10 @@ def get_post_data(subreddit, count=3, comment_count=10, post_url=None):
     c = 0
 
     print("Getting Posts...")
-    for post_element in post_elements:
-        post_type = post_element.get_attribute("post-type")
-        if post_type != "text":
-            continue
-        
-        
-        post_meta = {
-            "post_title": filter_text(post_element.get_attribute("post-title"), remove_text),
-            "author": post_element.get_attribute("author"),
-            "author_icon": post_element.get_attribute("icon"),
-            "subreddit": post_element.get_attribute("subreddit-prefixed-name"),
-            "comment_count": int(post_element.get_attribute("comment-count")),
-            "created": post_element.get_attribute("created-timestamp"),
-            "score": int(post_element.get_attribute("score")),
-            "content_href": post_element.get_attribute("content-href")
-        }
-
-        # if post has less comments than requested
-        if post_meta["comment_count"] < comment_count:
-            comment_count = post_meta["comment_count"]
-
-        # take a screenshot
-        ss_path = f"{subreddit}-{post_meta['author']}"
-        screenshot(post_element, f"{subreddit}-{post_meta['author']}", "post.png")
-        post_meta["img_path"] = f"assets/{ss_path}/post.png"
-        post_meta["img_dir"] = ss_path
-
-        post_data.append(post_meta)
+    for post_element in post_elements:        
+        post_meta = get_post_meta(element=post_element)
+        if post_meta:
+            post_data.append(post_meta)
     
     print("Parsing each post's data...")
     for p_meta in post_data:
@@ -250,7 +226,7 @@ def add_comment_data(comment_data, comment, post_meta):
 
     comment_meta = {
         "author": comment.get_attribute("author"),
-        "score": int(comment.get_attribute("score")),
+        "score": comment.get_attribute("score"),
         "author_icon": post_meta["author_icon"], # replace this later with the right one or a random one
         "content": content
     }

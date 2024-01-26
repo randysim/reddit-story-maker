@@ -165,3 +165,5 @@ geckodriver
 # assets
 assets/
 temp/
+resources/background/
+resources/music/
