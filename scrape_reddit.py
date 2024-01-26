@@ -58,7 +58,6 @@ def get_post_meta():
         print("ERROR: post is not of type text")
         return
     
-    
     post_meta = {
         "post_title": filter_text(post_element.get_attribute("post-title"), remove_text),
         "author": post_element.get_attribute("author"),
@@ -147,7 +146,7 @@ def get_post_data(subreddit, count=3, comment_count=10, post_url=None):
             "subreddit": post_element.get_attribute("subreddit-prefixed-name"),
             "comment_count": int(post_element.get_attribute("comment-count")),
             "created": post_element.get_attribute("created-timestamp"),
-            "score": post_element.get_attribute("score"),
+            "score": int(post_element.get_attribute("score")),
             "content_href": post_element.get_attribute("content-href")
         }
 
@@ -251,7 +250,7 @@ def add_comment_data(comment_data, comment, post_meta):
 
     comment_meta = {
         "author": comment.get_attribute("author"),
-        "score": comment.get_attribute("score"),
+        "score": int(comment.get_attribute("score")),
         "author_icon": post_meta["author_icon"], # replace this later with the right one or a random one
         "content": content
     }
