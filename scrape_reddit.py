@@ -247,7 +247,7 @@ def add_comment_data(comment_data, comment, post_meta):
     # take a screenshot
     ss_path = f"{post_meta['img_dir']}/comment{c}.png"
     screenshot(comment, post_meta["img_dir"], f"comment{c}.png")
-    comment_meta["img_path"] = f"assets/{ss_path}/comment{c}.png"
+    comment_meta["img_path"] = f"assets/{ss_path}"
 
     # get voice for comment
     print(f"Generating audio for comment{c}")
